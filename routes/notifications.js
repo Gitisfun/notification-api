@@ -105,6 +105,12 @@ router.post("/", async (req, res, next) => {
  *           type: string
  *         description: The receiver's ID
  *       - in: query
+ *         name: appId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application ID (required)
+ *       - in: query
  *         name: unreadOnly
  *         schema:
  *           type: boolean
@@ -120,11 +126,6 @@ router.post("/", async (req, res, next) => {
  *           type: string
  *         description: Filter by channel
  *       - in: query
- *         name: appId
- *         schema:
- *           type: string
- *         description: Filter by application ID
- *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
@@ -139,25 +140,30 @@ router.post("/", async (req, res, next) => {
  *     responses:
  *       200:
  *         description: List of notifications
+ *       400:
+ *         description: Missing appId
  */
 router.get("/:receiverId", async (req, res, next) => {
   try {
     const { receiverId } = req.params;
     const { unreadOnly, type, channel, appId, limit = 50, skip = 0 } = req.query;
 
-    const query = { receiverId };
+    if (!appId) {
+      throw ApiError.badRequest("Missing required query parameter: appId");
+    }
+
+    const query = { receiverId, appId };
     if (unreadOnly === "true") query.read = false;
     if (type) query.type = type;
     if (channel) query.channel = channel;
-    if (appId) query.appId = appId;
 
     const [notifications, total, unreadCount] = await Promise.all([
       Notification.find(query)
         .sort({ createdAt: -1 })
         .skip(parseInt(skip))
         .limit(parseInt(limit)),
-      Notification.countDocuments({ receiverId }),
-      Notification.countDocuments({ receiverId, read: false }),
+      Notification.countDocuments({ receiverId, appId }),
+      Notification.countDocuments({ receiverId, appId, read: false }),
     ]);
 
     res.json({
@@ -222,6 +228,12 @@ router.patch("/:id/read", async (req, res, next) => {
  *           type: string
  *         description: The receiver's ID
  *       - in: query
+ *         name: appId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application ID (required)
+ *       - in: query
  *         name: type
  *         schema:
  *           type: string
@@ -231,23 +243,23 @@ router.patch("/:id/read", async (req, res, next) => {
  *         schema:
  *           type: string
  *         description: Filter by channel
- *       - in: query
- *         name: appId
- *         schema:
- *           type: string
- *         description: Filter by application ID
  *     responses:
  *       200:
  *         description: Notifications marked as read
+ *       400:
+ *         description: Missing appId
  */
 router.patch("/:receiverId/read-all", async (req, res, next) => {
   try {
     const { type, channel, appId } = req.query;
 
-    const query = { receiverId: req.params.receiverId, read: false };
+    if (!appId) {
+      throw ApiError.badRequest("Missing required query parameter: appId");
+    }
+
+    const query = { receiverId: req.params.receiverId, appId, read: false };
     if (type) query.type = type;
     if (channel) query.channel = channel;
-    if (appId) query.appId = appId;
 
     const result = await Notification.updateMany(query, { read: true });
 
